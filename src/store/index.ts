@@ -1,4 +1,4 @@
-import type { AppState, User, EquipmentType, Department, EquipmentRecord, TableConfig, ColumnConfig } from '../types';
+import type { AppState, User, EquipmentType, Department, EquipmentRecord, TableConfig, ColumnConfig, ExtensionRecord, ExtensionConfig } from '../types';
 import { loadState, saveState, loadCurrentUser, saveCurrentUser, generateId } from '../utils/storage';
 import { validateAllRecords } from '../utils/validation';
 import { calculateFee } from '../utils/format';
@@ -19,12 +19,12 @@ class Store {
   private updateOverdueStatus(): void {
     const today = new Date().toISOString().split('T')[0];
     this.state.records = this.state.records.map(record => {
-      if (
-        !record.actualReturnDate &&
-        record.expectedReturnDate < today &&
-        record.status === 'borrowed'
-      ) {
-        return { ...record, status: 'overdue' as const };
+      if (!record.actualReturnDate) {
+        if (record.expectedReturnDate < today) {
+          return { ...record, status: 'overdue' as const };
+        } else if (record.extensionCount > 0) {
+          return { ...record, status: 'extended' as const };
+        }
       }
       return record;
     });
@@ -102,11 +102,13 @@ class Store {
     this.notify();
   }
 
-  addRecord(record: Omit<EquipmentRecord, 'id' | 'createdAt' | 'updatedAt'>): void {
+  addRecord(record: Omit<EquipmentRecord, 'id' | 'createdAt' | 'updatedAt' | 'extensionCount' | 'extensionHistory'>): void {
     const now = new Date().toISOString();
     const newRecord: EquipmentRecord = {
       ...record,
       id: generateId(),
+      extensionCount: 0,
+      extensionHistory: [],
       createdAt: now,
       updatedAt: now,
     };
@@ -153,6 +155,93 @@ class Store {
     this.notify();
   }
 
+  extendRecord(recordId: string, newExpectedDate: string, reason: string): { success: boolean; message: string } {
+    const record = this.state.records.find(r => r.id === recordId);
+    if (!record) {
+      return { success: false, message: '记录不存在' };
+    }
+
+    if (record.status === 'returned') {
+      return { success: false, message: '已归还的记录不能延期' };
+    }
+
+    const config = this.state.extensionConfig;
+    
+    if (record.extensionCount >= config.maxExtensionTimes) {
+      return { success: false, message: `已达到最大延期次数限制 (${config.maxExtensionTimes} 次)` };
+    }
+
+    const oldDate = new Date(record.expectedReturnDate);
+    const newDate = new Date(newExpectedDate);
+    const diffDays = Math.ceil((newDate.getTime() - oldDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) {
+      return { success: false, message: '新的预计归还日期必须晚于当前预计归还日期' };
+    }
+
+    if (diffDays > config.maxExtensionDays) {
+      return { success: false, message: `单次延期天数不能超过 ${config.maxExtensionDays} 天` };
+    }
+
+    const currentUser = this.state.currentUser;
+    const extensionRecord: ExtensionRecord = {
+      id: generateId(),
+      oldExpectedDate: record.expectedReturnDate,
+      newExpectedDate: newExpectedDate,
+      reason,
+      operatorId: currentUser?.id || '',
+      operatorName: currentUser?.name || '未知',
+      createdAt: new Date().toISOString(),
+    };
+
+    const now = new Date().toISOString();
+    this.state.records = this.state.records.map(r =>
+      r.id === recordId
+        ? {
+            ...r,
+            expectedReturnDate: newExpectedDate,
+            extensionCount: r.extensionCount + 1,
+            extensionHistory: [...r.extensionHistory, extensionRecord],
+            latestExtensionReason: reason,
+            status: 'extended' as const,
+            updatedAt: now,
+          }
+        : r
+    );
+
+    this.updateOverdueStatus();
+    this.notify();
+    return { success: true, message: '延期成功' };
+  }
+
+  getExtensionConfig(): ExtensionConfig {
+    return { ...this.state.extensionConfig };
+  }
+
+  updateExtensionConfig(config: Partial<ExtensionConfig>): void {
+    this.state.extensionConfig = { ...this.state.extensionConfig, ...config };
+    this.persist();
+    this.notify();
+  }
+
+  canExtend(recordId: string): { canExtend: boolean; reason?: string } {
+    const record = this.state.records.find(r => r.id === recordId);
+    if (!record) {
+      return { canExtend: false, reason: '记录不存在' };
+    }
+
+    if (record.status === 'returned') {
+      return { canExtend: false, reason: '已归还的记录不能延期' };
+    }
+
+    const config = this.state.extensionConfig;
+    if (record.extensionCount >= config.maxExtensionTimes) {
+      return { canExtend: false, reason: `已达到最大延期次数限制 (${config.maxExtensionTimes} 次)` };
+    }
+
+    return { canExtend: true };
+  }
+
   updateTableConfig(config: Partial<TableConfig>): void {
     this.state.tableConfig = { ...this.state.tableConfig, ...config };
     this.persist();
@@ -168,7 +257,7 @@ class Store {
   }
 
   getValidationErrors() {
-    return validateAllRecords(this.state.records);
+    return validateAllRecords(this.state.records, this.state.extensionConfig);
   }
 
   canEdit(): boolean {

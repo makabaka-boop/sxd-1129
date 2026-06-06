@@ -1,7 +1,7 @@
 import { store } from '../store';
-import type { EquipmentType, Department } from '../types';
+import type { EquipmentType, Department, ExtensionConfig } from '../types';
 
-type TabType = 'equipment' | 'department';
+type TabType = 'equipment' | 'department' | 'extension';
 
 export class AdminPage {
   private container: HTMLElement;
@@ -24,6 +24,9 @@ export class AdminPage {
           </button>
           <button class="tab-btn ${this.currentTab === 'department' ? 'active' : ''}" data-tab="department">
             科室管理
+          </button>
+          <button class="tab-btn ${this.currentTab === 'extension' ? 'active' : ''}" data-tab="extension">
+            延期配置
           </button>
         </div>
         <div id="admin-tab-content"></div>
@@ -59,8 +62,10 @@ export class AdminPage {
 
     if (this.currentTab === 'equipment') {
       this.renderEquipmentTab(content);
-    } else {
+    } else if (this.currentTab === 'department') {
       this.renderDepartmentTab(content);
+    } else {
+      this.renderExtensionTab(content);
     }
   }
 
@@ -306,6 +311,75 @@ export class AdminPage {
         store.addDepartment({ name });
       }
       close();
+    });
+  }
+
+  private renderExtensionTab(container: HTMLElement): void {
+    const config = store.getExtensionConfig();
+
+    container.innerHTML = `
+      <div class="tab-content">
+        <div class="settings-section">
+          <h3 class="section-subtitle">延期归还配置</h3>
+          <p class="section-desc">配置器材领用延期归还的相关限制参数</p>
+          <div class="extension-config-form">
+            <div class="form-row">
+              <label>单次最大延期天数</label>
+              <input type="number" id="config-max-days" value="${config.maxExtensionDays}" min="1" max="365">
+              <p class="form-hint">设置单次延期最多可以延长多少天</p>
+            </div>
+            <div class="form-row">
+              <label>最大延期次数</label>
+              <input type="number" id="config-max-times" value="${config.maxExtensionTimes}" min="0" max="10">
+              <p class="form-hint">设置每条领用记录最多可以延期多少次</p>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="btn-save-extension-config">保存配置</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3 class="section-subtitle">配置说明</h3>
+          <div class="config-info">
+            <div class="info-item">
+              <span class="info-icon">📌</span>
+              <span>单次最大延期天数：控制每次延期操作允许延长的最长时间范围</span>
+            </div>
+            <div class="info-item">
+              <span class="info-icon">📌</span>
+              <span>最大延期次数：控制单条领用记录允许延期的总次数</span>
+            </div>
+            <div class="info-item">
+              <span class="info-icon">📌</span>
+              <span>超过限制后，系统将不允许继续延期操作</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.querySelector('#btn-save-extension-config')?.addEventListener('click', () => {
+      const maxDaysInput = container.querySelector('#config-max-days') as HTMLInputElement;
+      const maxTimesInput = container.querySelector('#config-max-times') as HTMLInputElement;
+      
+      const maxDays = parseInt(maxDaysInput.value);
+      const maxTimes = parseInt(maxTimesInput.value);
+
+      if (isNaN(maxDays) || maxDays < 1) {
+        alert('单次最大延期天数必须大于等于 1');
+        return;
+      }
+
+      if (isNaN(maxTimes) || maxTimes < 0) {
+        alert('最大延期次数必须大于等于 0');
+        return;
+      }
+
+      store.updateExtensionConfig({
+        maxExtensionDays: maxDays,
+        maxExtensionTimes: maxTimes,
+      });
+      alert('配置保存成功');
     });
   }
 }

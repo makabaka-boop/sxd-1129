@@ -1,7 +1,7 @@
 import { store } from '../store';
 import { ResizableTable } from './ResizableTable';
 import type { EquipmentRecord } from '../types';
-import { calculateFee, formatCurrency, calculateBorrowDays } from '../utils/format';
+import { calculateFee, formatCurrency, calculateBorrowDays, canExtend as canExtendStatus } from '../utils/format';
 
 export class RecordsPage {
   private container: HTMLElement;
@@ -66,6 +66,11 @@ export class RecordsPage {
       onReturn: canEdit
         ? (recordId) => {
             this.showReturnModal(recordId);
+          }
+        : undefined,
+      onExtend: canEdit
+        ? (recordId) => {
+            this.showExtendModal(recordId);
           }
         : undefined,
       canEdit,
@@ -234,7 +239,7 @@ export class RecordsPage {
         return;
       }
 
-      const newRecord: Omit<EquipmentRecord, 'id' | 'createdAt' | 'updatedAt'> = {
+      const newRecord: Omit<EquipmentRecord, 'id' | 'createdAt' | 'updatedAt' | 'extensionCount' | 'extensionHistory'> = {
         equipmentTypeId: equipmentId,
         departmentId,
         borrower,
@@ -335,6 +340,7 @@ export class RecordsPage {
     const equipment = state.equipmentTypes.find(e => e.id === record.equipmentTypeId);
     const department = state.departments.find(d => d.id === record.departmentId);
     const today = new Date().toISOString().split('T')[0];
+    const isOverdue = today > record.expectedReturnDate;
 
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
@@ -370,6 +376,18 @@ export class RecordsPage {
               <span class="info-label">预计归还：</span>
               <span class="info-value">${record.expectedReturnDate}</span>
             </div>
+            ${record.extensionCount > 0 ? `
+              <div class="info-row">
+                <span class="info-label">延期次数：</span>
+                <span class="info-value">${record.extensionCount} 次</span>
+              </div>
+            ` : ''}
+            ${isOverdue ? `
+              <div class="info-row overdue-warning">
+                <span class="info-label">超期状态：</span>
+                <span class="info-value text-danger">已超期</span>
+              </div>
+            ` : ''}
           </div>
           <div class="form-row">
             <label>实际归还日期 *</label>
@@ -387,6 +405,10 @@ export class RecordsPage {
             <div class="fee-row">
               <span>数量：</span>
               <span>${record.quantity}</span>
+            </div>
+            <div id="overdue-days-info" class="fee-row" style="display: none;">
+              <span>超期天数：</span>
+              <span id="overdue-days" class="text-danger">-</span>
             </div>
             <div class="fee-row fee-total">
               <span>预计结算费用：</span>
@@ -415,8 +437,20 @@ export class RecordsPage {
         const fee = calculateFee(record, equipment, returnDate);
         const feeDaysEl = modal.querySelector('#fee-days');
         const feeTotalEl = modal.querySelector('#fee-total');
+        const overdueInfoEl = modal.querySelector('#overdue-days-info') as HTMLElement;
+        const overdueDaysEl = modal.querySelector('#overdue-days');
+        
         if (feeDaysEl) feeDaysEl.textContent = `${days} 天`;
         if (feeTotalEl) feeTotalEl.textContent = formatCurrency(fee);
+        
+        const isReturnOverdue = returnDate > record.expectedReturnDate;
+        if (isReturnOverdue) {
+          const overdueDays = Math.ceil((new Date(returnDate).getTime() - new Date(record.expectedReturnDate).getTime()) / (1000 * 60 * 60 * 24));
+          if (overdueInfoEl) overdueInfoEl.style.display = 'flex';
+          if (overdueDaysEl) overdueDaysEl.textContent = `${overdueDays} 天`;
+        } else {
+          if (overdueInfoEl) overdueInfoEl.style.display = 'none';
+        }
       }
     };
 
@@ -446,6 +480,132 @@ export class RecordsPage {
 
       store.returnRecord(recordId, returnDate);
       close();
+    });
+  }
+
+  private showExtendModal(recordId: string): void {
+    const state = store.getState();
+    const record = state.records.find(r => r.id === recordId);
+    if (!record) return;
+
+    const canExtendResult = store.canExtend(recordId);
+    if (!canExtendResult.canExtend) {
+      alert(canExtendResult.reason || '无法延期');
+      return;
+    }
+
+    const equipment = state.equipmentTypes.find(e => e.id === record.equipmentTypeId);
+    const department = state.departments.find(d => d.id === record.departmentId);
+    const config = store.getExtensionConfig();
+    const today = new Date().toISOString().split('T')[0];
+    const minDate = record.expectedReturnDate > today ? record.expectedReturnDate : today;
+    const maxDateObj = new Date(record.expectedReturnDate);
+    maxDateObj.setDate(maxDateObj.getDate() + config.maxExtensionDays);
+    const maxDate = maxDateObj.toISOString().split('T')[0];
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal extend-modal">
+        <div class="modal-header">
+          <h3>延期归还</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="extend-info">
+            <div class="info-row">
+              <span class="info-label">器材名称：</span>
+              <span class="info-value">${equipment?.name || '未知'}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">科室：</span>
+              <span class="info-value">${department?.name || '未知'}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">领用人：</span>
+              <span class="info-value">${record.borrower}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">当前预计归还：</span>
+              <span class="info-value">${record.expectedReturnDate}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">已延期次数：</span>
+              <span class="info-value">${record.extensionCount} / ${config.maxExtensionTimes}</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>新的预计归还日期 *</label>
+            <input type="date" id="extend-date" min="${minDate}" max="${maxDate}">
+            <p class="form-hint">单次延期最多 ${config.maxExtensionDays} 天</p>
+          </div>
+          <div class="form-row">
+            <label>延期原因 *</label>
+            <textarea id="extend-reason" rows="3" placeholder="请填写延期原因" maxlength="200"></textarea>
+            <p class="form-hint"><span id="reason-count">0</span>/200 字符</p>
+          </div>
+          ${record.extensionHistory.length > 0 ? `
+            <div class="extension-history">
+              <h4>延期历史</h4>
+              <div class="history-list">
+                ${record.extensionHistory.map(h => `
+                  <div class="history-item">
+                    <div class="history-dates">${h.oldExpectedDate} → ${h.newExpectedDate}</div>
+                    <div class="history-reason">原因：${h.reason}</div>
+                    <div class="history-operator">操作人：${h.operatorName} | ${new Date(h.createdAt).toLocaleString()}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+        <div class="modal-footer">
+          <button class="btn" id="btn-cancel">取消</button>
+          <button class="btn btn-primary" id="btn-confirm-extend">确认延期</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const close = () => {
+      document.body.removeChild(modal);
+    };
+
+    const reasonInput = modal.querySelector('#extend-reason') as HTMLTextAreaElement;
+    const reasonCount = modal.querySelector('#reason-count') as HTMLElement;
+    reasonInput?.addEventListener('input', () => {
+      reasonCount.textContent = String(reasonInput.value.length);
+    });
+
+    modal.querySelector('.modal-close')?.addEventListener('click', close);
+    modal.querySelector('#btn-cancel')?.addEventListener('click', close);
+    modal.querySelector('.modal-overlay')?.addEventListener('click', (e: Event) => {
+      if (e.target === modal) close();
+    });
+
+    modal.querySelector('#btn-confirm-extend')?.addEventListener('click', () => {
+      const newDateInput = modal.querySelector('#extend-date') as HTMLInputElement;
+      const reasonInput = modal.querySelector('#extend-reason') as HTMLTextAreaElement;
+      const newDate = newDateInput.value;
+      const reason = reasonInput.value.trim();
+
+      if (!newDate) {
+        alert('请选择新的预计归还日期');
+        return;
+      }
+
+      if (!reason) {
+        alert('请填写延期原因');
+        return;
+      }
+
+      const result = store.extendRecord(recordId, newDate, reason);
+      if (result.success) {
+        close();
+      } else {
+        alert(result.message);
+      }
     });
   }
 }

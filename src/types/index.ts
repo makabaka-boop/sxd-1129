@@ -19,7 +19,22 @@ export interface Department {
   name: string;
 }
 
-export type RecordStatus = 'borrowed' | 'returned' | 'overdue';
+export interface ExtensionRecord {
+  id: string;
+  oldExpectedDate: string;
+  newExpectedDate: string;
+  reason: string;
+  operatorId: string;
+  operatorName: string;
+  createdAt: string;
+}
+
+export interface ExtensionConfig {
+  maxExtensionDays: number;
+  maxExtensionTimes: number;
+}
+
+export type RecordStatus = 'borrowed' | 'returned' | 'overdue' | 'extended';
 
 export interface EquipmentRecord {
   id: string;
@@ -33,6 +48,9 @@ export interface EquipmentRecord {
   disinfectionNote: string;
   feeMarked: number;
   status: RecordStatus;
+  extensionCount: number;
+  extensionHistory: ExtensionRecord[];
+  latestExtensionReason?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,10 +78,11 @@ export interface AppState {
   departments: Department[];
   records: EquipmentRecord[];
   tableConfig: TableConfig;
+  extensionConfig: ExtensionConfig;
 }
 
 export type ValidationError = {
-  type: 'overdue' | 'negative_quantity' | 'long_note';
+  type: 'overdue' | 'negative_quantity' | 'long_note' | 'extension_overdue' | 'frequent_extension';
   recordId: string;
   message: string;
 };

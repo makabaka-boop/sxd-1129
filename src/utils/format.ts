@@ -5,6 +5,7 @@ export const getStatusLabel = (status: RecordStatus): string => {
     borrowed: '领用中',
     returned: '已归还',
     overdue: '已超期',
+    extended: '已延期',
   };
   return labels[status];
 };
@@ -14,6 +15,7 @@ export const getStatusClass = (status: RecordStatus): string => {
     borrowed: 'status-borrowed',
     returned: 'status-returned',
     overdue: 'status-overdue',
+    extended: 'status-extended',
   };
   return classes[status];
 };
@@ -55,5 +57,9 @@ export const calculateFee = (
 };
 
 export const canReturn = (status: RecordStatus): boolean => {
-  return status === 'borrowed' || status === 'overdue';
+  return status === 'borrowed' || status === 'overdue' || status === 'extended';
+};
+
+export const canExtend = (status: RecordStatus): boolean => {
+  return status === 'borrowed' || status === 'overdue' || status === 'extended';
 };

@@ -1,5 +1,5 @@
 import { store } from '../store';
-import { getOverdueRecords, getNegativeQuantityRecords, getLongNoteRecords, MAX_NOTE_LENGTH, getUnsettledReturnRecords, getFeeAnomalyRecords } from '../utils/validation';
+import { getOverdueRecords, getNegativeQuantityRecords, getLongNoteRecords, MAX_NOTE_LENGTH, getUnsettledReturnRecords, getFeeAnomalyRecords, getExtendedRecords, getExtensionOverdueRecords, getFrequentExtensionRecords, FREQUENT_EXTENSION_THRESHOLD } from '../utils/validation';
 import { getStatusLabel, getStatusClass, formatCurrency, calculateFee } from '../utils/format';
 
 export class AuditPage {
@@ -41,14 +41,29 @@ export class AuditPage {
     const longNoteRecords = getLongNoteRecords(state.records);
     const unsettledRecords = getUnsettledReturnRecords(state.records);
     const feeAnomalyRecords = getFeeAnomalyRecords(state.records, state.equipmentTypes);
+    const extendedRecords = getExtendedRecords(state.records);
+    const extensionOverdueRecords = getExtensionOverdueRecords(state.records);
+    const frequentExtensionRecords = getFrequentExtensionRecords(state.records);
 
-    const totalAnomalies = overdueRecords.length + negativeRecords.length + longNoteRecords.length + unsettledRecords.length + feeAnomalyRecords.length;
+    const totalAnomalies = overdueRecords.length + negativeRecords.length + longNoteRecords.length + unsettledRecords.length + feeAnomalyRecords.length + extensionOverdueRecords.length + frequentExtensionRecords.length;
 
     content.innerHTML = `
       <div class="audit-summary">
         <div class="summary-card warning">
           <div class="summary-count">${overdueRecords.length}</div>
           <div class="summary-label">超期未还</div>
+        </div>
+        <div class="summary-card purple">
+          <div class="summary-count">${extendedRecords.length}</div>
+          <div class="summary-label">延期记录</div>
+        </div>
+        <div class="summary-card warning">
+          <div class="summary-count">${extensionOverdueRecords.length}</div>
+          <div class="summary-label">延期后超期</div>
+        </div>
+        <div class="summary-card caution">
+          <div class="summary-count">${frequentExtensionRecords.length}</div>
+          <div class="summary-label">频繁延期</div>
         </div>
         <div class="summary-card danger">
           <div class="summary-count">${negativeRecords.length}</div>
@@ -70,6 +85,21 @@ export class AuditPage {
           <div class="summary-count">${totalAnomalies}</div>
           <div class="summary-label">异常总数</div>
         </div>
+      </div>
+
+      <div class="audit-section">
+        <h3 class="section-title purple-title">延期记录</h3>
+        ${this.renderExtensionRecordsTable(extendedRecords, state, 'extended')}
+      </div>
+
+      <div class="audit-section">
+        <h3 class="section-title warning-title">延期后仍超期记录</h3>
+        ${this.renderExtensionRecordsTable(extensionOverdueRecords, state, 'extension_overdue')}
+      </div>
+
+      <div class="audit-section">
+        <h3 class="section-title caution-title">频繁延期记录（${FREQUENT_EXTENSION_THRESHOLD} 次及以上）</h3>
+        ${this.renderExtensionRecordsTable(frequentExtensionRecords, state, 'frequent_extension')}
       </div>
 
       <div class="audit-section">
@@ -187,6 +217,61 @@ export class AuditPage {
                     <td><span class="status-badge ${getStatusClass(record.status)}">${getStatusLabel(record.status)}</span></td>
                     <td class="${type === 'unsettled' ? 'text-warning' : ''}">${formatCurrency(record.feeMarked || 0)}</td>
                     ${type === 'fee_anomaly' ? `<td>${formatCurrency(expectedFee)}</td><td class="text-danger">${formatCurrency(diff)}</td>` : ''}
+                  </tr>
+                `;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  private renderExtensionRecordsTable(records: any[], state: any, type: string): string {
+    if (records.length === 0) {
+      return '<div class="empty-state">暂无异常记录</div>';
+    }
+
+    return `
+      <div class="audit-table-wrapper">
+        <table class="audit-table">
+          <thead>
+            <tr>
+              <th>器材名称</th>
+              <th>科室</th>
+              <th>领用人</th>
+              <th>数量</th>
+              <th>领用日期</th>
+              <th>最新预计归还</th>
+              <th>延期次数</th>
+              <th>延期原因</th>
+              <th>状态</th>
+              ${type === 'frequent_extension' ? '<th>延期历史</th>' : ''}
+            </tr>
+          </thead>
+          <tbody>
+            ${records
+              .map(record => {
+                const equip = state.equipmentTypes.find((e: any) => e.id === record.equipmentTypeId);
+                const dept = state.departments.find((d: any) => d.id === record.departmentId);
+                const reasonPreview = record.latestExtensionReason 
+                  ? (record.latestExtensionReason.length > 20 ? record.latestExtensionReason.substring(0, 20) + '...' : record.latestExtensionReason)
+                  : '-';
+                const historySummary = record.extensionHistory && record.extensionHistory.length > 0
+                  ? record.extensionHistory.map((h: any) => `${h.oldExpectedDate}→${h.newExpectedDate}`).join('; ')
+                  : '-';
+                return `
+                  <tr>
+                    <td>${equip?.name || '未知'}</td>
+                    <td>${dept?.name || '未知'}</td>
+                    <td>${record.borrower}</td>
+                    <td>${record.quantity}</td>
+                    <td>${record.borrowDate}</td>
+                    <td>${record.expectedReturnDate}</td>
+                    <td class="text-warning">${record.extensionCount} 次</td>
+                    <td title="${record.latestExtensionReason || ''}">${reasonPreview}</td>
+                    <td><span class="status-badge ${getStatusClass(record.status)}">${getStatusLabel(record.status)}</span></td>
+                    ${type === 'frequent_extension' ? `<td title="${historySummary}">${historySummary.length > 30 ? historySummary.substring(0, 30) + '...' : historySummary}</td>` : ''}
                   </tr>
                 `;
               })

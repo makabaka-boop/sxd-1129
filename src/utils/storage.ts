@@ -1,4 +1,4 @@
-import type { AppState, EquipmentType, Department, EquipmentRecord, TableConfig, User } from '../types';
+import type { AppState, EquipmentType, Department, EquipmentRecord, TableConfig, User, ExtensionConfig } from '../types';
 
 const STORAGE_KEYS = {
   STATE: 'med_equip_state',
@@ -17,6 +17,8 @@ const defaultColumns = [
   { id: 'c5', key: 'borrowDate', label: '领用日期', width: 120, visible: true, editable: true, type: 'date' as const },
   { id: 'c6', key: 'expectedReturnDate', label: '预计归还', width: 120, visible: true, editable: true, type: 'date' as const },
   { id: 'c7', key: 'actualReturnDate', label: '实际归还', width: 120, visible: true, editable: true, type: 'date' as const },
+  { id: 'c11', key: 'extensionCount', label: '延期次数', width: 90, visible: true, editable: false, type: 'number' as const },
+  { id: 'c12', key: 'latestExtensionReason', label: '延期原因摘要', width: 150, visible: true, editable: false, type: 'text' as const },
   { id: 'c8', key: 'disinfectionNote', label: '消毒备注', width: 200, visible: true, editable: true, type: 'text' as const },
   { id: 'c9', key: 'feeMarked', label: '费用标记', width: 100, visible: true, editable: true, type: 'number' as const },
   { id: 'c10', key: 'status', label: '状态', width: 100, visible: true, editable: true, type: 'status' as const },
@@ -38,6 +40,11 @@ const defaultDepartments: Department[] = [
   { id: 'd5', name: '急诊科' },
 ];
 
+const defaultExtensionConfig: ExtensionConfig = {
+  maxExtensionDays: 30,
+  maxExtensionTimes: 3,
+};
+
 const defaultRecords: EquipmentRecord[] = [
   {
     id: 'r1',
@@ -51,6 +58,8 @@ const defaultRecords: EquipmentRecord[] = [
     feeMarked: 20,
     status: 'returned',
     actualReturnDate: '2026-06-03',
+    extensionCount: 0,
+    extensionHistory: [],
     createdAt: '2026-06-01T09:00:00',
     updatedAt: '2026-06-03T14:00:00',
   },
@@ -65,6 +74,8 @@ const defaultRecords: EquipmentRecord[] = [
     disinfectionNote: '',
     feeMarked: 0,
     status: 'overdue',
+    extensionCount: 0,
+    extensionHistory: [],
     createdAt: '2026-06-04T10:00:00',
     updatedAt: '2026-06-04T10:00:00',
   },
@@ -82,6 +93,7 @@ const defaultState: AppState = {
   departments: defaultDepartments,
   records: defaultRecords,
   tableConfig: defaultTableConfig,
+  extensionConfig: defaultExtensionConfig,
 };
 
 const mockUsers: User[] = [

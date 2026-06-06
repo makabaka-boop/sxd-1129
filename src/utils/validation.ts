@@ -1,9 +1,10 @@
-import type { EquipmentRecord, ValidationError, EquipmentType } from '../types';
+import type { EquipmentRecord, ValidationError, EquipmentType, ExtensionConfig } from '../types';
 import { calculateFee } from './format';
 
 const MAX_NOTE_LENGTH = 200;
+const FREQUENT_EXTENSION_THRESHOLD = 2;
 
-export const validateRecord = (record: EquipmentRecord): ValidationError[] => {
+export const validateRecord = (record: EquipmentRecord, config?: ExtensionConfig): ValidationError[] => {
   const errors: ValidationError[] = [];
   const today = new Date().toISOString().split('T')[0];
 
@@ -16,11 +17,19 @@ export const validateRecord = (record: EquipmentRecord): ValidationError[] => {
   }
 
   if (!record.actualReturnDate && record.expectedReturnDate < today && record.status !== 'returned') {
-    errors.push({
-      type: 'overdue',
-      recordId: record.id,
-      message: `已超期未还 (预计: ${record.expectedReturnDate})`,
-    });
+    if (record.extensionCount > 0) {
+      errors.push({
+        type: 'extension_overdue',
+        recordId: record.id,
+        message: `延期后仍超期未还 (延期后预计: ${record.expectedReturnDate})`,
+      });
+    } else {
+      errors.push({
+        type: 'overdue',
+        recordId: record.id,
+        message: `已超期未还 (预计: ${record.expectedReturnDate})`,
+      });
+    }
   }
 
   if (record.disinfectionNote.length > MAX_NOTE_LENGTH) {
@@ -31,11 +40,19 @@ export const validateRecord = (record: EquipmentRecord): ValidationError[] => {
     });
   }
 
+  if (record.extensionCount >= FREQUENT_EXTENSION_THRESHOLD) {
+    errors.push({
+      type: 'frequent_extension',
+      recordId: record.id,
+      message: `频繁延期 (已延期 ${record.extensionCount} 次)`,
+    });
+  }
+
   return errors;
 };
 
-export const validateAllRecords = (records: EquipmentRecord[]): ValidationError[] => {
-  return records.flatMap(record => validateRecord(record));
+export const validateAllRecords = (records: EquipmentRecord[], config?: ExtensionConfig): ValidationError[] => {
+  return records.flatMap(record => validateRecord(record, config));
 };
 
 export const getOverdueRecords = (records: EquipmentRecord[]): EquipmentRecord[] => {
@@ -43,6 +60,21 @@ export const getOverdueRecords = (records: EquipmentRecord[]): EquipmentRecord[]
   return records.filter(
     r => !r.actualReturnDate && r.expectedReturnDate < today && r.status !== 'returned'
   );
+};
+
+export const getExtensionOverdueRecords = (records: EquipmentRecord[]): EquipmentRecord[] => {
+  const today = new Date().toISOString().split('T')[0];
+  return records.filter(
+    r => !r.actualReturnDate && r.expectedReturnDate < today && r.extensionCount > 0
+  );
+};
+
+export const getExtendedRecords = (records: EquipmentRecord[]): EquipmentRecord[] => {
+  return records.filter(r => r.extensionCount > 0 && !r.actualReturnDate);
+};
+
+export const getFrequentExtensionRecords = (records: EquipmentRecord[]): EquipmentRecord[] => {
+  return records.filter(r => r.extensionCount >= FREQUENT_EXTENSION_THRESHOLD && !r.actualReturnDate);
 };
 
 export const getNegativeQuantityRecords = (records: EquipmentRecord[]): EquipmentRecord[] => {
@@ -69,4 +101,4 @@ export const getFeeAnomalyRecords = (
   });
 };
 
-export { MAX_NOTE_LENGTH };
+export { MAX_NOTE_LENGTH, FREQUENT_EXTENSION_THRESHOLD };

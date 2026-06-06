@@ -1,6 +1,6 @@
 import type { ColumnConfig, EquipmentRecord, ValidationError } from '../types';
 import { store } from '../store';
-import { getStatusLabel, getStatusClass, formatCurrency, canReturn } from '../utils/format';
+import { getStatusLabel, getStatusClass, formatCurrency, canReturn, canExtend as canExtendStatus } from '../utils/format';
 
 interface TableRowData {
   id: string;
@@ -14,6 +14,8 @@ interface TableRowData {
   disinfectionNote: string;
   feeMarked: number;
   status: string;
+  extensionCount: number;
+  latestExtensionReason: string;
   equipmentTypeId: string;
   departmentId: string;
 }
@@ -31,6 +33,7 @@ export class ResizableTable {
   private onCellEdit: (recordId: string, key: string, value: any) => void;
   private onDelete?: (recordId: string) => void;
   private onReturn?: (recordId: string) => void;
+  private onExtend?: (recordId: string) => void;
   private canEdit: boolean;
 
   constructor(
@@ -39,6 +42,7 @@ export class ResizableTable {
       onCellEdit: (recordId: string, key: string, value: any) => void;
       onDelete?: (recordId: string) => void;
       onReturn?: (recordId: string) => void;
+      onExtend?: (recordId: string) => void;
       canEdit: boolean;
     }
   ) {
@@ -46,6 +50,7 @@ export class ResizableTable {
     this.onCellEdit = options.onCellEdit;
     this.onDelete = options.onDelete;
     this.onReturn = options.onReturn;
+    this.onExtend = options.onExtend;
     this.canEdit = options.canEdit;
     const state = store.getState();
     this.columns = state.tableConfig.columns.filter(c => c.visible);
@@ -110,6 +115,8 @@ export class ResizableTable {
       disinfectionNote: record.disinfectionNote,
       feeMarked: record.feeMarked,
       status: record.status,
+      extensionCount: record.extensionCount,
+      latestExtensionReason: record.latestExtensionReason || '',
       equipmentTypeId: record.equipmentTypeId,
       departmentId: record.departmentId,
     };
@@ -187,8 +194,13 @@ export class ResizableTable {
         const returnBtn = canReturnRecord
           ? `<button class="btn-sm btn-return" data-record-id="${record.id}">归还</button>`
           : '';
+
+        const canExtendRecord = this.onExtend && this.canEdit && canExtendStatus(record.status) && store.canExtend(record.id).canExtend;
+        const extendBtn = canExtendRecord
+          ? `<button class="btn-sm btn-extend" data-record-id="${record.id}">延期</button>`
+          : '';
         
-        const actionCell = hasActions ? `<td class="action-cell">${returnBtn}${deleteCell}</td>` : '';
+        const actionCell = hasActions ? `<td class="action-cell">${extendBtn}${returnBtn}${deleteCell}</td>` : '';
 
         return `<tr data-row-id="${record.id}"${hasError ? ' class="error-row"' : ''}>${cells}${actionCell}</tr>`;
       })
@@ -220,6 +232,20 @@ export class ResizableTable {
         return '<span class="muted">-</span>';
       }
       return `<span class="fee-amount">${formatCurrency(numValue)}</span>`;
+    }
+    if (col.key === 'extensionCount') {
+      const count = parseInt(value) || 0;
+      if (count === 0) {
+        return '<span class="muted">-</span>';
+      }
+      return `<span class="extension-count">${count} 次</span>`;
+    }
+    if (col.key === 'latestExtensionReason') {
+      if (!value) {
+        return '<span class="muted">-</span>';
+      }
+      const truncated = value.length > 15 ? value.substring(0, 15) + '...' : value;
+      return `<span title="${value}">${truncated}</span>`;
     }
     if (col.type === 'number' && value === 0) {
       return '<span class="muted">0</span>';
@@ -257,6 +283,7 @@ export class ResizableTable {
           { value: 'borrowed', label: '领用中' },
           { value: 'returned', label: '已归还' },
           { value: 'overdue', label: '已超期' },
+          { value: 'extended', label: '已延期' },
         ]
           .map(s => `<option value="${s.value}" ${s.value === currentValue ? 'selected' : ''}>${s.label}</option>`)
           .join('');
@@ -298,6 +325,15 @@ export class ResizableTable {
         const recordId = (btn as HTMLElement).getAttribute('data-record-id');
         if (recordId && this.onReturn) {
           this.onReturn(recordId);
+        }
+      });
+    });
+
+    this.container.querySelectorAll('.btn-extend').forEach(btn => {
+      btn.addEventListener('click', (e: Event) => {
+        const recordId = (btn as HTMLElement).getAttribute('data-record-id');
+        if (recordId && this.onExtend) {
+          this.onExtend(recordId);
         }
       });
     });
