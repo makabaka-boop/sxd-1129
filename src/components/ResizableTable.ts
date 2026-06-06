@@ -22,6 +22,7 @@ export class ResizableTable {
   private container: HTMLElement;
   private columns: ColumnConfig[];
   private records: EquipmentRecord[];
+  private externalRecords: EquipmentRecord[] | null = null;
   private errors: ValidationError[];
   private editingCell: { rowId: string; colKey: string } | null = null;
   private resizingCol: string | null = null;
@@ -62,10 +63,16 @@ export class ResizableTable {
     document.removeEventListener('click', this.handleDocumentClick);
   }
 
+  public setExternalRecords(records: EquipmentRecord[] | null): void {
+    this.externalRecords = records;
+    this.refresh();
+  }
+
   public refresh(): void {
     const state = store.getState();
     this.columns = state.tableConfig.columns.filter(c => c.visible);
-    this.records = this.applySorting(state.records);
+    const sourceRecords = this.externalRecords || state.records;
+    this.records = this.applySorting(sourceRecords);
     this.errors = store.getValidationErrors();
     this.render();
   }
@@ -388,6 +395,16 @@ export class ResizableTable {
       updates.actualReturnDate = value || undefined;
       if (value) {
         updates.status = 'returned';
+      } else {
+        const record = (this.externalRecords || store.getState().records).find(r => r.id === rowId);
+        if (record) {
+          const today = new Date().toISOString().split('T')[0];
+          if (record.expectedReturnDate < today) {
+            updates.status = 'overdue';
+          } else {
+            updates.status = 'borrowed';
+          }
+        }
       }
     } else {
       updates[colKey] = value;

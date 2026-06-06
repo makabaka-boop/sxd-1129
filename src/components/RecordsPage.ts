@@ -64,7 +64,7 @@ export class RecordsPage {
     this.table.render();
 
     this.unsubscribe = store.subscribe(() => {
-      this.table?.refresh();
+      this.applyFilters();
     });
 
     this.bindEvents();
@@ -126,9 +126,9 @@ export class RecordsPage {
       });
     }
 
+    const hasFilters = statusValue || searchValue;
     if (this.table) {
-      (this.table as any).records = records;
-      this.table.refresh();
+      this.table.setExternalRecords(hasFilters ? records : null);
     }
   }
 
@@ -247,7 +247,7 @@ export class RecordsPage {
           <button class="modal-close">&times;</button>
         </div>
         <div class="modal-body">
-          <p class="modal-tip">勾选显示的列，拖拽列标题可调整顺序</p>
+          <p class="modal-tip">勾选显示的列，可调整列宽度</p>
           <div class="column-settings-list">
             ${columns
               .map(
