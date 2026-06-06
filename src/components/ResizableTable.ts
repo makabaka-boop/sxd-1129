@@ -46,7 +46,7 @@ export class ResizableTable {
     this.canEdit = options.canEdit;
     const state = store.getState();
     this.columns = state.tableConfig.columns.filter(c => c.visible);
-    this.records = state.records;
+    this.records = this.applySorting(state.records);
     this.errors = store.getValidationErrors();
     this.bindEvents();
   }
