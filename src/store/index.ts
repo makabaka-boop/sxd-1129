@@ -1,6 +1,7 @@
 import type { AppState, User, EquipmentType, Department, EquipmentRecord, TableConfig, ColumnConfig } from '../types';
 import { loadState, saveState, loadCurrentUser, saveCurrentUser, generateId } from '../utils/storage';
 import { validateAllRecords } from '../utils/validation';
+import { calculateFee } from '../utils/format';
 
 class Store {
   private state: AppState;
@@ -125,6 +126,29 @@ class Store {
 
   deleteRecord(id: string): void {
     this.state.records = this.state.records.filter(r => r.id !== id);
+    this.persist();
+    this.notify();
+  }
+
+  returnRecord(id: string, actualReturnDate: string): void {
+    const record = this.state.records.find(r => r.id === id);
+    if (!record) return;
+
+    const equipmentType = this.state.equipmentTypes.find(e => e.id === record.equipmentTypeId);
+    const fee = calculateFee(record, equipmentType, actualReturnDate);
+
+    const now = new Date().toISOString();
+    this.state.records = this.state.records.map(r =>
+      r.id === id
+        ? {
+            ...r,
+            actualReturnDate,
+            status: 'returned' as const,
+            feeMarked: fee,
+            updatedAt: now,
+          }
+        : r
+    );
     this.persist();
     this.notify();
   }

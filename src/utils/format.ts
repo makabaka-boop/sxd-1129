@@ -1,4 +1,4 @@
-import type { RecordStatus } from '../types';
+import type { RecordStatus, EquipmentRecord, EquipmentType } from '../types';
 
 export const getStatusLabel = (status: RecordStatus): string => {
   const labels: Record<RecordStatus, string> = {
@@ -34,4 +34,26 @@ export const formatDate = (dateStr: string): string => {
 
 export const formatCurrency = (amount: number): string => {
   return `¥${amount.toFixed(2)}`;
+};
+
+export const calculateBorrowDays = (borrowDate: string, returnDate: string): number => {
+  const start = new Date(borrowDate);
+  const end = new Date(returnDate);
+  const diffTime = Math.abs(end.getTime() - start.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return Math.max(1, diffDays);
+};
+
+export const calculateFee = (
+  record: EquipmentRecord,
+  equipmentType: EquipmentType | undefined,
+  actualReturnDate: string
+): number => {
+  if (!equipmentType) return 0;
+  const days = calculateBorrowDays(record.borrowDate, actualReturnDate);
+  return days * equipmentType.dailyRate * record.quantity;
+};
+
+export const canReturn = (status: RecordStatus): boolean => {
+  return status === 'borrowed' || status === 'overdue';
 };

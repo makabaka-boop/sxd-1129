@@ -1,6 +1,7 @@
 import { store } from '../store';
 import { ResizableTable } from './ResizableTable';
 import type { EquipmentRecord } from '../types';
+import { calculateFee, formatCurrency, calculateBorrowDays } from '../utils/format';
 
 export class RecordsPage {
   private container: HTMLElement;
@@ -32,6 +33,7 @@ export class RecordsPage {
             <label>状态筛选：</label>
             <select id="filter-status">
               <option value="">全部</option>
+              <option value="pending">待归还</option>
               <option value="borrowed">领用中</option>
               <option value="returned">已归还</option>
               <option value="overdue">已超期</option>
@@ -57,6 +59,11 @@ export class RecordsPage {
       onDelete: canEdit
         ? (recordId) => {
             store.deleteRecord(recordId);
+          }
+        : undefined,
+      onReturn: canEdit
+        ? (recordId) => {
+            this.showReturnModal(recordId);
           }
         : undefined,
       canEdit,
@@ -110,7 +117,11 @@ export class RecordsPage {
     let records = store.getState().records;
 
     if (statusValue) {
-      records = records.filter(r => r.status === statusValue);
+      if (statusValue === 'pending') {
+        records = records.filter(r => r.status === 'borrowed' || r.status === 'overdue');
+      } else {
+        records = records.filter(r => r.status === statusValue);
+      }
     }
 
     if (searchValue) {
@@ -306,6 +317,128 @@ export class RecordsPage {
         }
       });
 
+      close();
+    });
+  }
+
+  private showReturnModal(recordId: string): void {
+    const state = store.getState();
+    const record = state.records.find(r => r.id === recordId);
+    if (!record) return;
+
+    const equipment = state.equipmentTypes.find(e => e.id === record.equipmentTypeId);
+    const department = state.departments.find(d => d.id === record.departmentId);
+    const today = new Date().toISOString().split('T')[0];
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal return-modal">
+        <div class="modal-header">
+          <h3>归还确认</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="return-info">
+            <div class="info-row">
+              <span class="info-label">器材名称：</span>
+              <span class="info-value">${equipment?.name || '未知'}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">科室：</span>
+              <span class="info-value">${department?.name || '未知'}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">领用人：</span>
+              <span class="info-value">${record.borrower}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">数量：</span>
+              <span class="info-value">${record.quantity} ${equipment?.unit || ''}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">领用日期：</span>
+              <span class="info-value">${record.borrowDate}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">预计归还：</span>
+              <span class="info-value">${record.expectedReturnDate}</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>实际归还日期 *</label>
+            <input type="date" id="return-date" value="${today}" min="${record.borrowDate}">
+          </div>
+          <div class="fee-calculation" id="fee-calculation">
+            <div class="fee-row">
+              <span>领用天数：</span>
+              <span id="fee-days">-</span>
+            </div>
+            <div class="fee-row">
+              <span>每日费用：</span>
+              <span>${formatCurrency(equipment?.dailyRate || 0)} / ${equipment?.unit || '个'}</span>
+            </div>
+            <div class="fee-row">
+              <span>数量：</span>
+              <span>${record.quantity}</span>
+            </div>
+            <div class="fee-row fee-total">
+              <span>预计结算费用：</span>
+              <span id="fee-total">-</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" id="btn-cancel">取消</button>
+          <button class="btn btn-primary" id="btn-confirm-return">确认归还</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const close = () => {
+      document.body.removeChild(modal);
+    };
+
+    const updateFee = () => {
+      const returnDateInput = modal.querySelector('#return-date') as HTMLInputElement;
+      const returnDate = returnDateInput.value;
+      if (returnDate && record) {
+        const days = calculateBorrowDays(record.borrowDate, returnDate);
+        const fee = calculateFee(record, equipment, returnDate);
+        const feeDaysEl = modal.querySelector('#fee-days');
+        const feeTotalEl = modal.querySelector('#fee-total');
+        if (feeDaysEl) feeDaysEl.textContent = `${days} 天`;
+        if (feeTotalEl) feeTotalEl.textContent = formatCurrency(fee);
+      }
+    };
+
+    updateFee();
+
+    modal.querySelector('#return-date')?.addEventListener('change', updateFee);
+
+    modal.querySelector('.modal-close')?.addEventListener('click', close);
+    modal.querySelector('#btn-cancel')?.addEventListener('click', close);
+    modal.querySelector('.modal-overlay')?.addEventListener('click', (e: Event) => {
+      if (e.target === modal) close();
+    });
+
+    modal.querySelector('#btn-confirm-return')?.addEventListener('click', () => {
+      const returnDateInput = modal.querySelector('#return-date') as HTMLInputElement;
+      const returnDate = returnDateInput.value;
+
+      if (!returnDate) {
+        alert('请选择实际归还日期');
+        return;
+      }
+
+      if (returnDate < record.borrowDate) {
+        alert('实际归还日期不能早于领用日期');
+        return;
+      }
+
+      store.returnRecord(recordId, returnDate);
       close();
     });
   }

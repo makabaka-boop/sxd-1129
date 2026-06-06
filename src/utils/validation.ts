@@ -1,4 +1,5 @@
-import type { EquipmentRecord, ValidationError } from '../types';
+import type { EquipmentRecord, ValidationError, EquipmentType } from '../types';
+import { calculateFee } from './format';
 
 const MAX_NOTE_LENGTH = 200;
 
@@ -50,6 +51,22 @@ export const getNegativeQuantityRecords = (records: EquipmentRecord[]): Equipmen
 
 export const getLongNoteRecords = (records: EquipmentRecord[]): EquipmentRecord[] => {
   return records.filter(r => r.disinfectionNote.length > MAX_NOTE_LENGTH);
+};
+
+export const getUnsettledReturnRecords = (records: EquipmentRecord[]): EquipmentRecord[] => {
+  return records.filter(r => r.status === 'returned' && (!r.feeMarked || r.feeMarked <= 0));
+};
+
+export const getFeeAnomalyRecords = (
+  records: EquipmentRecord[],
+  equipmentTypes: EquipmentType[]
+): EquipmentRecord[] => {
+  return records.filter(r => {
+    if (r.status !== 'returned' || !r.actualReturnDate) return false;
+    const equipmentType = equipmentTypes.find(e => e.id === r.equipmentTypeId);
+    const expectedFee = calculateFee(r, equipmentType, r.actualReturnDate);
+    return Math.abs(r.feeMarked - expectedFee) > 0.01;
+  });
 };
 
 export { MAX_NOTE_LENGTH };

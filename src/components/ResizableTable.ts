@@ -1,6 +1,6 @@
 import type { ColumnConfig, EquipmentRecord, ValidationError } from '../types';
 import { store } from '../store';
-import { getStatusLabel, getStatusClass } from '../utils/format';
+import { getStatusLabel, getStatusClass, formatCurrency, canReturn } from '../utils/format';
 
 interface TableRowData {
   id: string;
@@ -30,6 +30,7 @@ export class ResizableTable {
   private startWidth = 0;
   private onCellEdit: (recordId: string, key: string, value: any) => void;
   private onDelete?: (recordId: string) => void;
+  private onReturn?: (recordId: string) => void;
   private canEdit: boolean;
 
   constructor(
@@ -37,12 +38,14 @@ export class ResizableTable {
     options: {
       onCellEdit: (recordId: string, key: string, value: any) => void;
       onDelete?: (recordId: string) => void;
+      onReturn?: (recordId: string) => void;
       canEdit: boolean;
     }
   ) {
     this.container = container;
     this.onCellEdit = options.onCellEdit;
     this.onDelete = options.onDelete;
+    this.onReturn = options.onReturn;
     this.canEdit = options.canEdit;
     const state = store.getState();
     this.columns = state.tableConfig.columns.filter(c => c.visible);
@@ -135,7 +138,8 @@ export class ResizableTable {
       })
       .join('');
 
-    const deleteHeader = this.onDelete && this.canEdit ? '<th class="action-th" style="width: 60px;">操作</th>' : '';
+    const hasActions = (this.onDelete && this.canEdit) || (this.onReturn && this.canEdit);
+    const actionHeader = hasActions ? '<th class="action-th" style="width: 120px;">操作</th>' : '';
 
     const bodyRows = this.records
       .map(record => {
@@ -176,10 +180,17 @@ export class ResizableTable {
 
         const deleteCell =
           this.onDelete && this.canEdit
-            ? `<td class="action-cell"><button class="btn-delete" data-record-id="${record.id}">删除</button></td>`
+            ? `<button class="btn-sm btn-delete" data-record-id="${record.id}">删除</button>`
             : '';
 
-        return `<tr data-row-id="${record.id}"${hasError ? ' class="error-row"' : ''}>${cells}${deleteCell}</tr>`;
+        const canReturnRecord = this.onReturn && this.canEdit && canReturn(record.status);
+        const returnBtn = canReturnRecord
+          ? `<button class="btn-sm btn-return" data-record-id="${record.id}">归还</button>`
+          : '';
+        
+        const actionCell = hasActions ? `<td class="action-cell">${returnBtn}${deleteCell}</td>` : '';
+
+        return `<tr data-row-id="${record.id}"${hasError ? ' class="error-row"' : ''}>${cells}${actionCell}</tr>`;
       })
       .join('');
 
@@ -187,7 +198,7 @@ export class ResizableTable {
       <div class="table-wrapper">
         <table class="resizable-table">
           <thead>
-            <tr>${headerRow}${deleteHeader}</tr>
+            <tr>${headerRow}${actionHeader}</tr>
           </thead>
           <tbody>
             ${bodyRows || '<tr><td colspan="' + (this.columns.length + 1) + '" class="empty-state">暂无数据</td></tr>'}
@@ -202,6 +213,13 @@ export class ResizableTable {
   private formatCellValue(col: ColumnConfig, value: any, record: EquipmentRecord): string {
     if (col.key === 'status') {
       return `<span class="status-badge ${getStatusClass(record.status)}">${getStatusLabel(record.status)}</span>`;
+    }
+    if (col.key === 'feeMarked') {
+      const numValue = parseFloat(value) || 0;
+      if (numValue === 0) {
+        return '<span class="muted">-</span>';
+      }
+      return `<span class="fee-amount">${formatCurrency(numValue)}</span>`;
     }
     if (col.type === 'number' && value === 0) {
       return '<span class="muted">0</span>';
@@ -271,6 +289,15 @@ export class ResizableTable {
         const colKey = (cell as HTMLElement).getAttribute('data-col-key');
         if (rowId && colKey) {
           this.startEditing(rowId, colKey);
+        }
+      });
+    });
+
+    this.container.querySelectorAll('.btn-return').forEach(btn => {
+      btn.addEventListener('click', (e: Event) => {
+        const recordId = (btn as HTMLElement).getAttribute('data-record-id');
+        if (recordId && this.onReturn) {
+          this.onReturn(recordId);
         }
       });
     });

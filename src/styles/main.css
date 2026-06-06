@@ -61,6 +61,17 @@ body {
   background: #fff;
 }
 
+.btn-return {
+  color: #52c41a;
+  border-color: #52c41a;
+  background: #fff;
+}
+
+.btn-return:hover {
+  background: #52c41a;
+  color: #fff;
+}
+
 .muted {
   color: #999;
 }
@@ -752,6 +763,77 @@ body {
 
 .audit-table tbody tr:hover {
   background: #fafafa;
+}
+
+.fee-amount {
+  color: #fa8c16;
+  font-weight: 500;
+}
+
+.return-info {
+  background: #fafafa;
+  padding: 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.info-row {
+  display: flex;
+  margin-bottom: 8px;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-label {
+  color: #666;
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.info-value {
+  color: #333;
+  font-weight: 500;
+}
+
+.fee-calculation {
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+  border-radius: 6px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.fee-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.fee-row:last-child {
+  margin-bottom: 0;
+}
+
+.fee-row.fee-total {
+  border-top: 1px dashed #b7eb8f;
+  padding-top: 12px;
+  margin-top: 8px;
+  font-weight: 600;
+  color: #52c41a;
+  font-size: 16px;
+}
+
+.summary-card.caution .summary-count {
+  color: #fa8c16;
+}
+
+.section-title.caution-title {
+  color: #fa8c16;
+}
+
+.return-modal {
+  width: 520px;
 }
 
 @media (max-width: 768px) {
