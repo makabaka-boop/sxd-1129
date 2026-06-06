@@ -7,6 +7,8 @@ export class RecordsPage {
   private container: HTMLElement;
   private table: ResizableTable | null = null;
   private unsubscribe: (() => void) | null = null;
+  private filterStatus: string = '';
+  private searchValue: string = '';
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -46,7 +48,7 @@ export class RecordsPage {
         </div>
         <div id="table-container" class="table-container"></div>
         <div class="page-tip">
-          <span>提示：双击单元格可编辑内容 | 拖拽列标题右侧边缘可调整列宽 | 点击列标题可排序</span>
+          <span>提示：双击单元格可编辑内容 | 修改"实际归还日期"自动计算费用并标记为已归还 | 拖拽列标题右侧边缘可调整列宽 | 点击列标题可排序</span>
         </div>
       </div>
     `;
@@ -97,22 +99,26 @@ export class RecordsPage {
 
     const statusFilter = this.container.querySelector('#filter-status') as HTMLSelectElement;
     if (statusFilter) {
-      statusFilter.addEventListener('change', () => this.applyFilters());
+      statusFilter.value = this.filterStatus;
+      statusFilter.addEventListener('change', () => {
+        this.filterStatus = statusFilter.value;
+        this.applyFilters();
+      });
     }
 
     const searchInput = this.container.querySelector('#search-input') as HTMLInputElement;
     if (searchInput) {
-      searchInput.addEventListener('input', () => this.applyFilters());
+      searchInput.value = this.searchValue;
+      searchInput.addEventListener('input', () => {
+        this.searchValue = searchInput.value;
+        this.applyFilters();
+      });
     }
   }
 
   private applyFilters(): void {
-    const statusFilter = this.container.querySelector('#filter-status') as HTMLSelectElement;
-    const searchInput = this.container.querySelector('#search-input') as HTMLInputElement;
-    if (!statusFilter || !searchInput) return;
-
-    const statusValue = statusFilter.value;
-    const searchValue = searchInput.value.toLowerCase();
+    const statusValue = this.filterStatus;
+    const searchValue = this.searchValue.toLowerCase();
 
     let records = store.getState().records;
 

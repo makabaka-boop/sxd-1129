@@ -413,7 +413,8 @@ export class ResizableTable {
     }
 
     const { rowId, colKey } = this.editingCell;
-    this.editingCell = null;
+    const state = store.getState();
+    const record = (this.externalRecords || state.records).find(r => r.id === rowId);
 
     let updates: any = {};
     if (colKey === 'departmentName') {
@@ -421,22 +422,41 @@ export class ResizableTable {
     } else if (colKey === 'actualReturnDate') {
       updates.actualReturnDate = value || undefined;
       if (value) {
-        updates.status = 'returned';
-      } else {
-        const record = (this.externalRecords || store.getState().records).find(r => r.id === rowId);
-        if (record) {
-          const today = new Date().toISOString().split('T')[0];
-          if (record.expectedReturnDate < today) {
-            updates.status = 'overdue';
-          } else {
-            updates.status = 'borrowed';
-          }
+        if (value < record!.borrowDate) {
+          alert('实际归还日期不能早于领用日期');
+          this.cancelEdit();
+          return;
         }
+        updates.status = 'returned';
+        const equipmentType = state.equipmentTypes.find(e => e.id === record!.equipmentTypeId);
+        const days = Math.max(1, Math.ceil((new Date(value).getTime() - new Date(record!.borrowDate).getTime()) / (1000 * 60 * 60 * 24)));
+        updates.feeMarked = days * (equipmentType?.dailyRate || 0) * record!.quantity;
+      } else {
+        const today = new Date().toISOString().split('T')[0];
+        if (record!.expectedReturnDate < today) {
+          updates.status = 'overdue';
+        } else {
+          updates.status = 'borrowed';
+        }
+        updates.feeMarked = 0;
       }
+    } else if (colKey === 'status') {
+      if (value === 'returned') {
+        if (!record!.actualReturnDate) {
+          alert('请先填写实际归还日期，或直接修改实际归还日期自动标记为已归还');
+          this.cancelEdit();
+          return;
+        }
+        const equipmentType = state.equipmentTypes.find(e => e.id === record!.equipmentTypeId);
+        const days = Math.max(1, Math.ceil((new Date(record!.actualReturnDate!).getTime() - new Date(record!.borrowDate).getTime()) / (1000 * 60 * 60 * 24)));
+        updates.feeMarked = days * (equipmentType?.dailyRate || 0) * record!.quantity;
+      }
+      updates[colKey] = value;
     } else {
       updates[colKey] = value;
     }
 
+    this.editingCell = null;
     this.onCellEdit(rowId, colKey, updates);
   }
 
